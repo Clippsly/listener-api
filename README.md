@@ -59,19 +59,6 @@ u=<clippsly_username>
 p=<app_password>
 ```
 
-### Navidrome
-
-```
-https://listener.clippsly.app/external/navidrome
-```
-
-Authentication:
-
-```
-u=<clippsly_username>
-p=<app_password>
-```
-
 These compatibility layers allow existing Subsonic-compatible applications to connect to Clippsly Listener without requiring changes.
 
 ## Features

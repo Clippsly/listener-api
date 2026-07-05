@@ -1,0 +1,1565 @@
+openapi: "3.0.3"
+info:
+  title: "Clippsly Listener API"
+  description: |
+    # Clippsly Listener API v1
+    
+    The public, stable, versioned API for Clippsly Listener accounts.
+    
+    ## Overview
+    
+    This API provides programmatic access to your private Clippsly music locker.
+    Use it to build third-party applications, integrations, and automation tools.
+    
+    ## Authentication
+    
+    All requests require an **App Password** (listener account key).
+    App Passwords can be created and managed via the `/v1/account/passwords` endpoint.
+    
+    **Accepted authentication methods:**
+    
+    - `Authorization: Bearer <app_password>` (recommended)
+    - `X-Clippsly-App-Key: <app_password>`
+    
+    **Not accepted:**
+    
+    - Website session tokens
+    - Browser cookies
+    - CSRF tokens
+    - Admin API keys
+    
+    ## Account Requirements
+    
+    This API only works for **Listener accounts** (accountType=1).
+    Artist accounts, suspended accounts, and banned accounts are rejected.
+    
+    ## Rate Limits
+    
+    - **300 requests per minute** per App Password
+    - Upload endpoints: **30 requests per minute**
+    
+    Rate limit headers are included in every response:
+    
+    - `X-RateLimit-Limit`: Maximum requests per window
+    - `X-RateLimit-Remaining`: Remaining requests in current window
+    - `X-RateLimit-Reset`: Unix timestamp when the window resets
+    
+    ## Versioning
+    
+    The API starts at `/v1/`. Future breaking changes will create `/v2/` without
+    breaking existing clients. Non-breaking additions may be added to `/v1/`.
+    
+    ## Error Responses
+    
+    All errors follow this format:
+    
+    ```json
+    {
+      "error": {
+        "code": "machine_readable_code",
+        "message": "Human-readable description."
+      }
+    }
+    ```
+    
+    Common error codes:
+    
+    | HTTP | Code | Description |
+    |------|------|-------------|
+    | 400 | `missing_app_key` | No App Password provided |
+    | 401 | `invalid_app_key` | Invalid or revoked App Password |
+    | 403 | `account_not_listener` | Account is not a Listener account |
+    | 403 | `account_banned` | Account has been banned |
+    | 403 | `account_suspended` | Account is suspended |
+    | 404 | `not_found` | Resource not found |
+    | 413 | `upload_failed` | File exceeds size limit |
+    | 415 | `upload_failed` | Unsupported file format |
+    | 429 | `rate_limited` | Too many requests |
+    
+    ## Data Scope
+    
+    Every endpoint only exposes the authenticated user's **private locker**.
+    No endpoint can access another user's data. The API never exposes:
+    
+    - Public artist uploads
+    - Public comments or profiles
+    - Roblox integration data
+    - Moderation endpoints
+    - Membership/payment data
+    - Support/administration tools
+    
+  version: "1.0.0"
+  contact:
+    name: "Clippsly Support"
+    url: "https://support.clippsly.com"
+  termsOfService: "https://clippsly.app/terms"
+
+servers:
+  - url: "https://listener.clippsly.app"
+    description: "Production listener API"
+
+tags:
+  - name: "Account"
+    description: "Account profile and App Password management"
+  - name: "Library"
+    description: "Browse your private music locker"
+  - name: "Tracks"
+    description: "Individual track operations"
+  - name: "Albums"
+    description: "Album operations"
+  - name: "Playlists"
+    description: "Playlist CRUD"
+  - name: "Upload"
+    description: "Upload tracks to your locker"
+  - name: "Search"
+    description: "Search your locker"
+  - name: "Edit"
+    description: "Edit track and album metadata"
+  - name: "Playback"
+    description: "Playback queues, streaming, shuffle, loop, lucky-dip"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: "http"
+      scheme: "bearer"
+      description: "App Password (listener account key)"
+    AppKeyHeader:
+      type: "apiKey"
+      in: "header"
+      name: "X-Clippsly-App-Key"
+      description: "App Password (listener account key)"
+
+  schemas:
+    Error:
+      type: "object"
+      properties:
+        error:
+          type: "object"
+          properties:
+            code:
+              type: "string"
+              description: "Machine-readable error code"
+            message:
+              type: "string"
+              description: "Human-readable error message"
+
+    Account:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+        username:
+          type: "string"
+        displayname:
+          type: "string"
+        avatar:
+          type: "string"
+          nullable: true
+        banner:
+          type: "string"
+          nullable: true
+        membership:
+          type: "integer"
+          description: "0=Newbie, 1=Free, 2=Standard, 3=Producer"
+        account_type:
+          type: "string"
+          enum: ["listener"]
+        is_over_18:
+          type: "boolean"
+        account_region:
+          type: "string"
+          nullable: true
+        join_date:
+          type: "integer"
+          description: "Unix timestamp"
+        last_online:
+          type: "integer"
+          description: "Unix timestamp"
+        balance:
+          type: "integer"
+          description: "Account balance in cents"
+        storage:
+          $ref: "#/components/schemas/StorageInfo"
+
+    StorageInfo:
+      type: "object"
+      properties:
+        track_count:
+          type: "integer"
+        total_bytes:
+          type: "integer"
+        total_duration_seconds:
+          type: "integer"
+
+    Track:
+      type: "object"
+      description: "A simplified track object. All tracks in the listener API are private by definition."
+      properties:
+        id:
+          type: "integer"
+        title:
+          type: "string"
+        artist:
+          type: "string"
+        genre:
+          type: "string"
+          nullable: true
+        description:
+          type: "string"
+          nullable: true
+        is_explicit:
+          type: "boolean"
+        cover_art:
+          type: "string"
+          nullable: true
+        duration_seconds:
+          type: "number"
+          nullable: true
+        duration_formatted:
+          type: "string"
+          nullable: true
+        album_id:
+          type: "integer"
+          nullable: true
+        album_title:
+          type: "string"
+          nullable: true
+        track_position:
+          type: "integer"
+          nullable: true
+        release_date:
+          type: "integer"
+          nullable: true
+
+    Album:
+      type: "object"
+      description: "A simplified album object."
+      properties:
+        id:
+          type: "integer"
+        title:
+          type: "string"
+        artist:
+          type: "string"
+          nullable: true
+        cover_art:
+          type: "string"
+          nullable: true
+        track_count:
+          type: "integer"
+        duration_seconds:
+          type: "integer"
+          description: "Total duration in seconds"
+        created_at:
+          type: "integer"
+          nullable: true
+        tracks:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Track"
+
+    Playlist:
+      type: "object"
+      properties:
+        playlist_id:
+          type: "integer"
+        user_id:
+          type: "integer"
+        playlist_name:
+          type: "string"
+        playlist_description:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "integer"
+        username:
+          type: "string"
+        tracks:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Track"
+
+    AppPassword:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+        account_key:
+          type: "string"
+          description: "The raw App Password (shown once)"
+        key_prefix:
+          type: "string"
+        label:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "integer"
+
+    AppPasswordListItem:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+        key_prefix:
+          type: "string"
+        label:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "integer"
+        last_used_at:
+          type: "integer"
+          nullable: true
+
+    StreamInfo:
+      type: "object"
+      properties:
+        url:
+          type: "string"
+          description: "Proxied stream URL via Clippsly"
+        direct_url:
+          type: "string"
+          description: "Direct signed URL (time-limited)"
+        content_type:
+          type: "string"
+        variant:
+          type: "string"
+          enum: ["best", "low", "original"]
+        bitrate:
+          type: "integer"
+        duration_seconds:
+          type: "number"
+          nullable: true
+        token:
+          type: "string"
+        token_expires_at:
+          type: "integer"
+
+    AudioVariant:
+      type: "object"
+      properties:
+        key:
+          type: "string"
+        label:
+          type: "string"
+        codec:
+          type: "string"
+        bitrate:
+          type: "integer"
+          nullable: true
+        lossless:
+          type: "boolean"
+        default:
+          type: "boolean"
+
+    SearchResult:
+      type: "object"
+      properties:
+        query:
+          type: "string"
+        tracks:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Track"
+        albums:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Album"
+        total_tracks:
+          type: "integer"
+        total_albums:
+          type: "integer"
+        limit:
+          type: "integer"
+        offset:
+          type: "integer"
+
+    SearchSuggestion:
+      type: "object"
+      properties:
+        type:
+          type: "string"
+          enum: ["track", "album"]
+        id:
+          type: "integer"
+        title:
+          type: "string"
+
+    StorageQuota:
+      type: "object"
+      properties:
+        track_count:
+          type: "integer"
+        used_bytes:
+          type: "integer"
+        quota_bytes:
+          type: "integer"
+        quota_remaining_bytes:
+          type: "integer"
+
+    PlaybackTrack:
+      type: "object"
+      description: "A fully-resolved track ready for playback, with stream URL."
+      properties:
+        track_id:
+          type: "integer"
+        title:
+          type: "string"
+        artist:
+          type: "string"
+        genre:
+          type: "string"
+          nullable: true
+        description:
+          type: "string"
+          nullable: true
+        is_explicit:
+          type: "boolean"
+        album_id:
+          type: "integer"
+          nullable: true
+        album_title:
+          type: "string"
+          nullable: true
+        track_position:
+          type: "integer"
+          nullable: true
+        cover_art:
+          type: "string"
+          nullable: true
+        duration_seconds:
+          type: "number"
+          nullable: true
+        duration_formatted:
+          type: "string"
+          nullable: true
+        release_date:
+          type: "integer"
+          nullable: true
+        stream:
+          type: "object"
+          properties:
+            url:
+              type: "string"
+            variant:
+              type: "string"
+              enum: ["best", "low", "original"]
+            variant_label:
+              type: "string"
+            variant_requested:
+              type: "string"
+            variant_fallback:
+              type: "boolean"
+            bitrate_kbps:
+              type: "integer"
+              nullable: true
+            content_type:
+              type: "string"
+            token:
+              type: "string"
+            token_expires_at:
+              type: "integer"
+        available_variants:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AudioVariant"
+
+    TrackReference:
+      type: "object"
+      description: "A lightweight track reference for queue listings."
+      properties:
+        track_id:
+          type: "integer"
+        title:
+          type: "string"
+        artist:
+          type: "string"
+        genre:
+          type: "string"
+          nullable: true
+        album_title:
+          type: "string"
+          nullable: true
+        duration_seconds:
+          type: "number"
+          nullable: true
+        duration_formatted:
+          type: "string"
+          nullable: true
+        track_position:
+          type: "integer"
+          nullable: true
+
+    PlaybackResponse:
+      type: "object"
+      properties:
+        success:
+          type: "boolean"
+        source:
+          type: "string"
+          enum: ["track", "album", "playlist", "lucky_dip"]
+        source_id:
+          type: "integer"
+        source_title:
+          type: "string"
+        shuffled:
+          type: "boolean"
+        total_tracks:
+          type: "integer"
+        owned_tracks:
+          type: "integer"
+        public_tracks_skipped:
+          type: "integer"
+        current_track:
+          $ref: "#/components/schemas/PlaybackTrack"
+        queue:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/TrackReference"
+        played_ids:
+          type: "array"
+          items:
+            type: "integer"
+        shuffle_reset:
+          type: "boolean"
+        action:
+          type: "string"
+          enum: ["play", "stop", "skip"]
+
+security:
+  - BearerAuth: []
+  - AppKeyHeader: []
+
+paths:
+  # ── Account ─────────────────────────────────────────────────────────────────
+  /v1/account:
+    get:
+      tags: ["Account"]
+      summary: "Get account profile"
+      operationId: "getAccount"
+      responses:
+        "200":
+          description: "Account profile"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  account:
+                    $ref: "#/components/schemas/Account"
+    patch:
+      tags: ["Account"]
+      summary: "Update account profile"
+      operationId: "updateAccount"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                displayname:
+                  type: "string"
+                  maxLength: 64
+                avatar:
+                  type: "string"
+                  format: "uri"
+                banner:
+                  type: "string"
+                  format: "uri"
+      responses:
+        "200":
+          description: "Updated account profile"
+
+  /v1/account/passwords:
+    get:
+      tags: ["Account"]
+      summary: "List App Passwords"
+      operationId: "listAppPasswords"
+      responses:
+        "200":
+          description: "Active App Passwords"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  app_passwords:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AppPasswordListItem"
+    post:
+      tags: ["Account"]
+      summary: "Create a new App Password"
+      description: |
+        Creates a new App Password. The raw key is returned **once** and cannot
+        be retrieved again. Maximum 5 active keys per account.
+      operationId: "createAppPassword"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                label:
+                  type: "string"
+                  maxLength: 120
+                  description: "Optional label to identify this key"
+      responses:
+        "201":
+          description: "App Password created"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  app_password:
+                    $ref: "#/components/schemas/AppPassword"
+                  warning:
+                    type: "string"
+        "409":
+          description: "Maximum keys reached (5)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/account/passwords/{id}:
+    delete:
+      tags: ["Account"]
+      summary: "Revoke an App Password"
+      operationId: "revokeAppPassword"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "App Password revoked"
+
+  /v1/account/storage:
+    get:
+      tags: ["Account"]
+      summary: "Get storage quota and usage"
+      operationId: "getStorageInfo"
+      responses:
+        "200":
+          description: "Storage info"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  track_count:
+                    type: "integer"
+                  used_bytes:
+                    type: "integer"
+                  quota_bytes:
+                    type: "integer"
+                  quota_remaining_bytes:
+                    type: "integer"
+
+  # ── Library ─────────────────────────────────────────────────────────────────
+  /v1/library:
+    get:
+      tags: ["Library"]
+      summary: "Library overview"
+      description: "Returns artist info, recent tracks, and recent albums."
+      operationId: "getLibraryOverview"
+      responses:
+        "200":
+          description: "Library overview"
+
+  /v1/library/tracks:
+    get:
+      tags: ["Library"]
+      summary: "List all tracks"
+      operationId: "listTracks"
+      parameters:
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 50
+            maximum: 200
+        - name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+      responses:
+        "200":
+          description: "Paginated track list"
+
+  /v1/library/tracks/{id}:
+    get:
+      tags: ["Library"]
+      summary: "Get a single track"
+      operationId: "getLibraryTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Track details"
+        "404":
+          description: "Track not found"
+
+  /v1/library/albums:
+    get:
+      tags: ["Library"]
+      summary: "List all albums"
+      operationId: "listAlbums"
+      responses:
+        "200":
+          description: "Album list (includes Singles virtual album)"
+
+  /v1/library/albums/{id}:
+    get:
+      tags: ["Library"]
+      summary: "Get album with tracks"
+      operationId: "getLibraryAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Album with tracks"
+
+  /v1/library/artist:
+    get:
+      tags: ["Library"]
+      summary: "Get artist info"
+      description: "Returns the authenticated user as an artist object."
+      operationId: "getArtist"
+      responses:
+        "200":
+          description: "Artist info"
+
+  # ── Tracks ──────────────────────────────────────────────────────────────────
+  /v1/tracks/{id}:
+    get:
+      tags: ["Tracks"]
+      summary: "Get track details"
+      operationId: "getTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Track details"
+    delete:
+      tags: ["Tracks"]
+      summary: "Delete a track"
+      operationId: "deleteTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Track deleted"
+
+  /v1/tracks/{id}/stream:
+    get:
+      tags: ["Tracks"]
+      summary: "Get streaming URL"
+      operationId: "getStreamUrl"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Stream info"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  stream:
+                    $ref: "#/components/schemas/StreamInfo"
+
+  /v1/tracks/{id}/cover:
+    get:
+      tags: ["Tracks"]
+      summary: "Get cover art URL"
+      operationId: "getTrackCover"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Cover art URL"
+
+  /v1/tracks/{id}/variants:
+    get:
+      tags: ["Tracks"]
+      summary: "List available audio variants"
+      operationId: "getTrackVariants"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Available variants"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  variants:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AudioVariant"
+
+  # ── Albums ──────────────────────────────────────────────────────────────────
+  /v1/albums/{id}:
+    get:
+      tags: ["Albums"]
+      summary: "Get album with tracks"
+      operationId: "getAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Album with tracks"
+    patch:
+      tags: ["Albums"]
+      summary: "Update album metadata"
+      operationId: "updateAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                Title:
+                  type: "string"
+                Artist:
+                  type: "string"
+                isPrivate:
+                  type: "integer"
+      responses:
+        "200":
+          description: "Updated album"
+    delete:
+      tags: ["Albums"]
+      summary: "Delete album"
+      operationId: "deleteAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                delete_tracks:
+                  type: "boolean"
+                  description: "Also delete tracks in this album"
+      responses:
+        "200":
+          description: "Album deleted"
+
+  /v1/albums/{id}/cover:
+    get:
+      tags: ["Albums"]
+      summary: "Get album cover art URL"
+      operationId: "getAlbumCover"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Cover art URL"
+
+  /v1/albums/{id}/tracks:
+    post:
+      tags: ["Albums"]
+      summary: "Add tracks to album"
+      operationId: "addTracksToAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+      responses:
+        "201":
+          description: "Tracks added"
+
+  /v1/albums/{id}/tracks/{trackId}:
+    delete:
+      tags: ["Albums"]
+      summary: "Remove track from album"
+      operationId: "removeTrackFromAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "trackId"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Track removed"
+
+  /v1/albums/{id}/reorder:
+    put:
+      tags: ["Albums"]
+      summary: "Reorder album tracks"
+      operationId: "reorderAlbumTracks"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+                  description: "Ordered array of track IDs"
+      responses:
+        "200":
+          description: "Tracks reordered"
+
+  # ── Playlists ───────────────────────────────────────────────────────────────
+  /v1/playlists:
+    get:
+      tags: ["Playlists"]
+      summary: "List all playlists"
+      operationId: "listPlaylists"
+      responses:
+        "200":
+          description: "Playlists"
+    post:
+      tags: ["Playlists"]
+      summary: "Create a playlist"
+      operationId: "createPlaylist"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["name"]
+              properties:
+                name:
+                  type: "string"
+                  maxLength: 255
+                description:
+                  type: "string"
+                  maxLength: 1000
+      responses:
+        "201":
+          description: "Playlist created"
+
+  /v1/playlists/{id}:
+    get:
+      tags: ["Playlists"]
+      summary: "Get playlist with tracks"
+      operationId: "getPlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Playlist with tracks"
+    patch:
+      tags: ["Playlists"]
+      summary: "Update playlist"
+      operationId: "updatePlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                playlist_name:
+                  type: "string"
+                playlist_description:
+                  type: "string"
+      responses:
+        "200":
+          description: "Updated playlist"
+    delete:
+      tags: ["Playlists"]
+      summary: "Delete playlist"
+      operationId: "deletePlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Playlist deleted"
+
+  /v1/playlists/{id}/tracks:
+    post:
+      tags: ["Playlists"]
+      summary: "Add tracks to playlist"
+      operationId: "addTracksToPlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+      responses:
+        "201":
+          description: "Tracks added"
+    delete:
+      tags: ["Playlists"]
+      summary: "Remove tracks from playlist"
+      operationId: "removeTracksFromPlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+      responses:
+        "200":
+          description: "Tracks removed"
+
+  /v1/playlists/{id}/reorder:
+    put:
+      tags: ["Playlists"]
+      summary: "Reorder playlist tracks"
+      operationId: "reorderPlaylistTracks"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+                  description: "Ordered array of track IDs"
+      responses:
+        "200":
+          description: "Tracks reordered"
+
+  # ── Upload ──────────────────────────────────────────────────────────────────
+  /v1/upload:
+    post:
+      tags: ["Upload"]
+      summary: "Upload a single track"
+      operationId: "uploadTrack"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: "object"
+              required: ["audio"]
+              properties:
+                audio:
+                  type: "string"
+                  format: "binary"
+                  description: "Audio file (MP3, M4A, FLAC, WAV, OGG, OPUS, WMA, AIFF)"
+                cover:
+                  type: "string"
+                  format: "binary"
+                  description: "Cover art image (JPEG, PNG, WebP, GIF)"
+                title:
+                  type: "string"
+                artist:
+                  type: "string"
+                genre:
+                  type: "string"
+                description:
+                  type: "string"
+                is_explicit:
+                  type: "boolean"
+      responses:
+        "201":
+          description: "Track uploaded"
+        "413":
+          description: "File too large (max 500 MB)"
+        "415":
+          description: "Unsupported format"
+
+  /v1/upload/album:
+    post:
+      tags: ["Upload"]
+      summary: "Upload tracks as an album"
+      operationId: "uploadAlbum"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: "object"
+              required: ["files"]
+              properties:
+                files:
+                  type: "array"
+                  items:
+                    type: "string"
+                    format: "binary"
+                  description: "Multiple audio files"
+                cover:
+                  type: "string"
+                  format: "binary"
+                album_title:
+                  type: "string"
+                artist:
+                  type: "string"
+      responses:
+        "201":
+          description: "Album created with tracks"
+
+  # ── Search ──────────────────────────────────────────────────────────────────
+  /v1/search:
+    get:
+      tags: ["Search"]
+      summary: "Search your locker"
+      operationId: "search"
+      parameters:
+        - name: "q"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 50
+            maximum: 200
+        - name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+      responses:
+        "200":
+          description: "Search results"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResult"
+
+  /v1/search/suggest:
+    get:
+      tags: ["Search"]
+      summary: "Quick search suggestions (autocomplete)"
+      operationId: "suggest"
+      parameters:
+        - name: "q"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 10
+            maximum: 50
+      responses:
+        "200":
+          description: "Suggestions"
+
+  # ── Edit ────────────────────────────────────────────────────────────────────
+  /v1/edit/tracks/{id}:
+    patch:
+      tags: ["Edit"]
+      summary: "Edit track metadata"
+      operationId: "editTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                title:
+                  type: "string"
+                artist:
+                  type: "string"
+                genre:
+                  type: "string"
+                description:
+                  type: "string"
+                is_explicit:
+                  type: "boolean"
+                is_ai_generated:
+                  type: "boolean"
+                is_private:
+                  type: "boolean"
+      responses:
+        "200":
+          description: "Track updated"
+
+  /v1/edit/albums/{id}:
+    patch:
+      tags: ["Edit"]
+      summary: "Edit album metadata"
+      operationId: "editAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                title:
+                  type: "string"
+                artist:
+                  type: "string"
+                is_private:
+                  type: "boolean"
+      responses:
+        "200":
+          description: "Album updated"
+
+  # ── Playback ────────────────────────────────────────────────────────────────
+  /v1/playback:
+    get:
+      tags: ["Playback"]
+      summary: "Playback API overview"
+      description: "Returns available playback sub-endpoints and your library track count."
+      operationId: "playbackOverview"
+      responses:
+        "200":
+          description: "Playback overview"
+
+  /v1/playback/track/{id}:
+    get:
+      tags: ["Playback"]
+      summary: "Get a single track ready for playback"
+      description: "Returns the track with a signed stream URL and all available audio variants. Only your own tracks."
+      operationId: "playbackTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Track ready for playback"
+        "404":
+          description: "Track not found in your library"
+
+  /v1/playback/track/{id}/next:
+    get:
+      tags: ["Playback"]
+      summary: "Get the next track after this one"
+      description: |
+        Auto-advance logic:
+        - If the track is in an album, returns the next album track
+        - Otherwise, returns a random track from your library
+        - Set `?looped=true` to repeat the same track
+        - NEVER falls back to Clippsly's public catalog
+      operationId: "playbackTrackNext"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "looped"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Next track or stop signal"
+
+  /v1/playback/album/{id}:
+    get:
+      tags: ["Playback"]
+      summary: "Build an album playback queue"
+      description: |
+        Returns all album tracks in order (or shuffled).
+        Only your own albums — all tracks are already scoped to your library.
+      operationId: "playbackAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "shuffled"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Album playback queue"
+        "404":
+          description: "Album not found"
+
+  /v1/playback/playlist/{id}:
+    get:
+      tags: ["Playback"]
+      summary: "Build a playlist playback queue"
+      description: |
+        Returns playlist tracks in order (or shuffled). Public tracks added
+        to the playlist are silently skipped — only YOUR tracks are playable.
+      operationId: "playbackPlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "shuffled"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+        - name: "playedIds"
+          in: "query"
+          schema:
+            type: "string"
+            description: "Comma-separated track IDs already played (for shuffle session state)"
+      responses:
+        "200":
+          description: "Playlist playback queue"
+
+  /v1/playback/playlist/{id}/next:
+    get:
+      tags: ["Playback"]
+      summary: "Get the next track in a playlist"
+      description: |
+        Sequential or shuffled next-track resolution during playlist playback.
+        Supports loop and shuffle with played-ID awareness.
+      operationId: "playbackPlaylistNext"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "currentTrackId"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+        - name: "shuffled"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "looped"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "playedIds"
+          in: "query"
+          schema:
+            type: "string"
+            description: "Comma-separated track IDs already played (shuffle state)"
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Next track or stop signal"
+
+  /v1/playback/lucky-dip:
+    get:
+      tags: ["Playback"]
+      summary: "Random track from your library"
+      description: |
+        Returns a single random track from your library. Optionally exclude a
+        track ID to avoid repeats. NEVER accesses Clippsly's public catalog.
+      operationId: "playbackLuckyDip"
+      parameters:
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+        - name: "excludeTrackId"
+          in: "query"
+          schema:
+            type: "integer"
+            description: "Track ID to exclude from the random selection"
+      responses:
+        "200":
+          description: "Random track or stop if library is empty"
+
+  /v1/playback/queue:
+    get:
+      tags: ["Playback"]
+      summary: "Random playback queue from your library"
+      description: |
+        Returns a shuffled queue of random tracks from your library.
+        Perfect for "shuffle all" functionality.
+      operationId: "playbackQueue"
+      parameters:
+        - name: "count"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 20
+            maximum: 100
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Random playback queue"

@@ -1,2 +1,103 @@
-# listener-api
-Public API specification for Clippsly Listener, including v1, Subsonic, and Navidrome compatibility.
+# Clippsly Listener API
+
+The official public API for **Clippsly Listener**.
+
+Clippsly Listener is a personal music locker that lets you upload, organize and stream your own music library from anywhere. This repository contains the OpenAPI specification for the public Listener API and its compatibility layers. 
+
+## Documentation
+
+The complete API specification is available in:
+
+- [`openapi.yaml`](./openapi.yaml)
+
+The specification follows the OpenAPI standard and can be imported into tools such as Swagger UI, Postman and Insomnia.
+
+## Listener Portal
+
+Manage your Listener account, create App Passwords and view your storage usage at:
+
+**https://listener.clippsly.app**
+
+## Base URL
+
+```
+https://listener.clippsly.app
+```
+
+## Authentication
+
+The native Listener API uses **App Passwords**.
+
+Supported authentication methods:
+
+```
+Authorization: Bearer <app_password>
+```
+
+or
+
+```
+X-Clippsly-App-Key: <app_password>
+```
+
+App Passwords can be created from the Listener Portal.
+
+## Compatibility Layers
+
+Clippsly provides compatibility endpoints for existing music players.
+
+### Subsonic
+
+```
+https://listener.clippsly.app/external/subsonic
+```
+
+Authentication:
+
+```
+u=<clippsly_username>
+p=<app_password>
+```
+
+### Navidrome
+
+```
+https://listener.clippsly.app/external/navidrome
+```
+
+Authentication:
+
+```
+u=<clippsly_username>
+p=<app_password>
+```
+
+These compatibility layers allow existing Subsonic-compatible applications to connect to Clippsly Listener without requiring changes.
+
+## Features
+
+- Versioned REST API
+- OpenAPI specification
+- App Password authentication
+- Personal music locker
+- Album management
+- Playlist management
+- Folder uploads
+- Playback API
+- Multiple audio quality variants
+- Subsonic compatibility
+- Navidrome compatibility
+
+## Versioning
+
+The native API is available under:
+
+```
+/v1/
+```
+
+Future breaking changes will be introduced under a new version while keeping previous versions available.
+
+## License
+
+Licensed under the Apache License 2.0. See [LICENSE](./LICENSE) for details.

@@ -16,7 +16,7 @@ The specification follows the OpenAPI standard and can be imported into tools su
 
 Manage your Listener account, create App Passwords and view your storage usage at:
 
-**https://listener.clippsly.app**
+**https://clippsly.app**
 
 ## Base URL
 
@@ -41,25 +41,6 @@ X-Clippsly-App-Key: <app_password>
 ```
 
 App Passwords can be created from the Listener Portal.
-
-## Compatibility Layers
-
-Clippsly provides compatibility endpoints for existing music players.
-
-### Subsonic
-
-```
-https://listener.clippsly.app/external/subsonic
-```
-
-Authentication:
-
-```
-u=<clippsly_username>
-p=<app_password>
-```
-
-These compatibility layers allow existing Subsonic-compatible applications to connect to Clippsly Listener without requiring changes.
 
 ## Features
 

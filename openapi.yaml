@@ -1,1913 +1,1740 @@
-openapi: 3.1.0
+openapi: "3.0.3"
 info:
-  title: Clippsly Listener API
-  version: 0.2.0
-  summary: HTTP contracts for the listener portal and App Password API
+  title: "Clippsly Listener API"
   description: |
-    This document describes the website-session API calls made by
-    `internal/api/listener/index.php` and the documented listener App Password
-    endpoints below `https://listener.clippsly.app/v1/`.
+    # Clippsly Listener API v1
+    
+    The public, stable, versioned API for Clippsly Listener accounts.
+    
+    ## Overview
+    
+    This API provides programmatic access to your private Clippsly music locker.
+    Use it to build third-party applications, integrations, and automation tools.
+    
+    ## Authentication
+    
+    All requests require an **App Password** (listener account key).
+    App Passwords can be created and managed via the `/v1/account/passwords` endpoint.
+    
+    **Accepted authentication methods:**
+    
+    - `Authorization: Bearer <app_password>` (recommended)
+    - `X-Clippsly-App-Key: <app_password>`
+    
+    **Not accepted:**
+    
+    - Website session tokens
+    - Browser cookies
+    - CSRF tokens
+    - Admin API keys
+    
+    ## Account Requirements
+    
+    This API only works for **Listener accounts** (accountType=1).
+    Artist accounts, suspended accounts, and banned accounts are rejected.
+    
+    ## Rate Limits
+    
+    - **300 requests per minute** per App Password
+    - Upload endpoints: **30 requests per minute**
+    
+    Rate limit headers are included in every response:
+    
+    - `X-RateLimit-Limit`: Maximum requests per window
+    - `X-RateLimit-Remaining`: Remaining requests in current window
+    - `X-RateLimit-Reset`: Unix timestamp when the window resets
+    
+    ## Versioning
+    
+    The API starts at `/v1/`. Future breaking changes will create `/v2/` without
+    breaking existing clients. Non-breaking additions may be added to `/v1/`.
+    
+    ## Error Responses
+    
+    All errors follow this format:
+    
+    ```json
+    {
+      "error": {
+        "code": "machine_readable_code",
+        "message": "Human-readable description."
+      }
+    }
+    ```
+    
+    Common error codes:
+    
+    | HTTP | Code | Description |
+    |------|------|-------------|
+    | 400 | `missing_app_key` | No App Password provided |
+    | 401 | `invalid_app_key` | Invalid or revoked App Password |
+    | 403 | `account_not_listener` | Account is not a Listener account |
+    | 403 | `account_banned` | Account has been banned |
+    | 403 | `account_suspended` | Account is suspended |
+    | 404 | `not_found` | Resource not found |
+    | 413 | `upload_failed` | File exceeds size limit |
+    | 415 | `upload_failed` | Unsupported file format |
+    | 429 | `rate_limited` | Too many requests |
+    
+    ## Data Scope
+    
+    Every endpoint only exposes the authenticated user's **private locker**.
+    No endpoint can access another user's data. The API never exposes:
+    
+    - Public artist uploads
+    - Public comments or profiles
+    - Roblox integration data
+    - Moderation endpoints
+    - Membership/payment data
+    - Support/administration tools
+    
+  version: "1.0.0"
+  contact:
+    name: "Clippsly Support"
+    url: "https://support.clippsly.com"
+  termsOfService: "https://clippsly.app/terms"
 
-    Unless a portal operation is explicitly marked public, pass the website session
-    token (the value of the `CLIPSESSIONTOKEN` cookie) as a Bearer token. App
-    Passwords are not accepted by portal endpoints. Operations tagged `Listener v1`
-    instead require a listener App Password as a Bearer token.
 servers:
-  - url: https://api.clippsly.app
-    description: Production API
+  - url: "https://listener.clippsly.app"
+    description: "Production listener API"
+
 tags:
-  - name: Portal
-  - name: Uploads
-  - name: Encoding
-  - name: Storage
-  - name: App Passwords
-  - name: Library
-  - name: Albums
-  - name: Playlists
-  - name: Migrations
-  - name: Membership and payments
-  - name: Account
-  - name: Listener v1
-security:
-  - websiteSession: []
-paths:
-  /endpoints/visual/creators:
-    get:
-      tags: [Portal]
-      summary: Get public creator and highlighted-track data
-      operationId: getCreatorShowcase
-      security: []
-      responses:
-        '200':
-          description: Public platform statistics and showcase data
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreatorShowcase'
-        '500':
-          $ref: '#/components/responses/ServerError'
+  - name: "Account"
+    description: "Account profile and App Password management"
+  - name: "Library"
+    description: "Browse your private music locker"
+  - name: "Tracks"
+    description: "Individual track operations"
+  - name: "Albums"
+    description: "Album operations"
+  - name: "Playlists"
+    description: "Playlist CRUD"
+  - name: "Upload"
+    description: "Upload tracks to your locker"
+  - name: "Search"
+    description: "Search your locker"
+  - name: "Edit"
+    description: "Edit track and album metadata"
+  - name: "Playback"
+    description: "Playback queues, streaming, shuffle, loop, lucky-dip"
+  - name: "Lyrics"
+    description: "Fetch synced or plain lyrics for tracks in your locker"
 
-  /endpoints/data/track-encode-status:
-    get:
-      tags: [Encoding]
-      summary: Poll an upload encoding job
-      operationId: getTrackEncodeStatus
-      parameters:
-        - name: job
-          in: query
-          required: true
-          description: Lowercase hexadecimal encoding-job identifier.
+components:
+  securitySchemes:
+    BearerAuth:
+      type: "http"
+      scheme: "bearer"
+      description: "App Password (listener account key)"
+    AppKeyHeader:
+      type: "apiKey"
+      in: "header"
+      name: "X-Clippsly-App-Key"
+      description: "App Password (listener account key)"
+
+  schemas:
+    Error:
+      type: "object"
+      properties:
+        error:
+          type: "object"
+          properties:
+            code:
+              type: "string"
+              description: "Machine-readable error code"
+            message:
+              type: "string"
+              description: "Human-readable error message"
+
+    Account:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+        username:
+          type: "string"
+        displayname:
+          type: "string"
+        avatar:
+          type: "string"
+          nullable: true
+        banner:
+          type: "string"
+          nullable: true
+        membership:
+          type: "integer"
+          description: "0=Newbie, 1=Free, 2=Standard, 3=Producer"
+        account_type:
+          type: "string"
+          enum: ["listener"]
+        is_over_18:
+          type: "boolean"
+        account_region:
+          type: "string"
+          nullable: true
+        join_date:
+          type: "integer"
+          description: "Unix timestamp"
+        last_online:
+          type: "integer"
+          description: "Unix timestamp"
+        balance:
+          type: "integer"
+          description: "Account balance in cents"
+        storage:
+          $ref: "#/components/schemas/StorageInfo"
+
+    StorageInfo:
+      type: "object"
+      properties:
+        track_count:
+          type: "integer"
+        total_bytes:
+          type: "integer"
+        total_duration_seconds:
+          type: "integer"
+
+    Track:
+      type: "object"
+      description: "A simplified track object. All tracks in the listener API are private by definition."
+      properties:
+        id:
+          type: "integer"
+        title:
+          type: "string"
+        artist:
+          type: "string"
+        genre:
+          type: "string"
+          nullable: true
+        description:
+          type: "string"
+          nullable: true
+        is_explicit:
+          type: "boolean"
+        cover_art:
+          type: "string"
+          nullable: true
+        duration_seconds:
+          type: "number"
+          nullable: true
+        duration_formatted:
+          type: "string"
+          nullable: true
+        album_id:
+          type: "integer"
+          nullable: true
+        album_title:
+          type: "string"
+          nullable: true
+        track_position:
+          type: "integer"
+          nullable: true
+        release_date:
+          type: "integer"
+          nullable: true
+
+    Album:
+      type: "object"
+      description: "A simplified album object."
+      properties:
+        id:
+          type: "integer"
+        title:
+          type: "string"
+        artist:
+          type: "string"
+          nullable: true
+        cover_art:
+          type: "string"
+          nullable: true
+        track_count:
+          type: "integer"
+        duration_seconds:
+          type: "integer"
+          description: "Total duration in seconds"
+        created_at:
+          type: "integer"
+          nullable: true
+        tracks:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Track"
+
+    Playlist:
+      type: "object"
+      properties:
+        playlist_id:
+          type: "integer"
+        user_id:
+          type: "integer"
+        playlist_name:
+          type: "string"
+        playlist_description:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "integer"
+        username:
+          type: "string"
+        tracks:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Track"
+
+    AppPassword:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+        account_key:
+          type: "string"
+          description: "The raw App Password (shown once)"
+        key_prefix:
+          type: "string"
+        label:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "integer"
+
+    AppPasswordListItem:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+        key_prefix:
+          type: "string"
+        label:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "integer"
+        last_used_at:
+          type: "integer"
+          nullable: true
+
+    StreamInfo:
+      type: "object"
+      properties:
+        url:
+          type: "string"
+          description: "Proxied stream URL via Clippsly"
+        direct_url:
+          type: "string"
+          description: "Direct signed URL (time-limited)"
+        content_type:
+          type: "string"
+        variant:
+          type: "string"
+          enum: ["best", "low", "original"]
+        bitrate:
+          type: "integer"
+        duration_seconds:
+          type: "number"
+          nullable: true
+        token:
+          type: "string"
+        token_expires_at:
+          type: "integer"
+
+    AudioVariant:
+      type: "object"
+      properties:
+        key:
+          type: "string"
+        label:
+          type: "string"
+        codec:
+          type: "string"
+        bitrate:
+          type: "integer"
+          nullable: true
+        lossless:
+          type: "boolean"
+        default:
+          type: "boolean"
+
+    SearchResult:
+      type: "object"
+      properties:
+        query:
+          type: "string"
+        tracks:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Track"
+        albums:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Album"
+        total_tracks:
+          type: "integer"
+        total_albums:
+          type: "integer"
+        limit:
+          type: "integer"
+        offset:
+          type: "integer"
+
+    SearchSuggestion:
+      type: "object"
+      properties:
+        type:
+          type: "string"
+          enum: ["track", "album"]
+        id:
+          type: "integer"
+        title:
+          type: "string"
+
+    StorageQuota:
+      type: "object"
+      properties:
+        track_count:
+          type: "integer"
+        used_bytes:
+          type: "integer"
+        quota_bytes:
+          type: "integer"
+        quota_remaining_bytes:
+          type: "integer"
+
+    PlaybackTrack:
+      type: "object"
+      description: "A fully-resolved track ready for playback, with stream URL."
+      properties:
+        track_id:
+          type: "integer"
+        title:
+          type: "string"
+        artist:
+          type: "string"
+        genre:
+          type: "string"
+          nullable: true
+        description:
+          type: "string"
+          nullable: true
+        is_explicit:
+          type: "boolean"
+        album_id:
+          type: "integer"
+          nullable: true
+        album_title:
+          type: "string"
+          nullable: true
+        track_position:
+          type: "integer"
+          nullable: true
+        cover_art:
+          type: "string"
+          nullable: true
+        duration_seconds:
+          type: "number"
+          nullable: true
+        duration_formatted:
+          type: "string"
+          nullable: true
+        release_date:
+          type: "integer"
+          nullable: true
+        stream:
+          type: "object"
+          properties:
+            url:
+              type: "string"
+            variant:
+              type: "string"
+              enum: ["best", "low", "original"]
+            variant_label:
+              type: "string"
+            variant_requested:
+              type: "string"
+            variant_fallback:
+              type: "boolean"
+            bitrate_kbps:
+              type: "integer"
+              nullable: true
+            content_type:
+              type: "string"
+            token:
+              type: "string"
+            token_expires_at:
+              type: "integer"
+        available_variants:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AudioVariant"
+
+    TrackReference:
+      type: "object"
+      description: "A lightweight track reference for queue listings."
+      properties:
+        track_id:
+          type: "integer"
+        title:
+          type: "string"
+        artist:
+          type: "string"
+        genre:
+          type: "string"
+          nullable: true
+        album_title:
+          type: "string"
+          nullable: true
+        duration_seconds:
+          type: "number"
+          nullable: true
+        duration_formatted:
+          type: "string"
+          nullable: true
+        track_position:
+          type: "integer"
+          nullable: true
+
+    PlaybackResponse:
+      type: "object"
+      properties:
+        success:
+          type: "boolean"
+        source:
+          type: "string"
+          enum: ["track", "album", "playlist", "lucky_dip"]
+        source_id:
+          type: "integer"
+        source_title:
+          type: "string"
+        shuffled:
+          type: "boolean"
+        total_tracks:
+          type: "integer"
+        owned_tracks:
+          type: "integer"
+        public_tracks_skipped:
+          type: "integer"
+        current_track:
+          $ref: "#/components/schemas/PlaybackTrack"
+        queue:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/TrackReference"
+        played_ids:
+          type: "array"
+          items:
+            type: "integer"
+        shuffle_reset:
+          type: "boolean"
+        action:
+          type: "string"
+          enum: ["play", "stop", "skip"]
+
+    ListenerLyricsResponse:
+      type: "object"
+      required: ["success", "instrumental", "lyrics", "type", "source", "trackName", "artistName", "albumName"]
+      properties:
+        success:
+          type: "boolean"
+          enum: [true]
+        instrumental:
+          type: "boolean"
+        lyrics:
+          type: "string"
+          nullable: true
+          description: "Synced LRC or plain lyric text; null for instrumental tracks."
+        type:
+          type: "string"
+          nullable: true
+          enum: ["synced", "plain"]
+        source:
+          type: "string"
+          enum: ["lrclib"]
+        trackName:
+          type: "string"
+        artistName:
+          type: "string"
+        albumName:
+          type: "string"
+          nullable: true
+      additionalProperties: false
+
+  parameters:
+    LyricsTrackIdPath:
+      name: "trackId"
+      in: "path"
+      required: true
+      description: "Numeric ID of a track owned by the authenticated listener."
+      schema:
+        type: "integer"
+        minimum: 1
+    LyricsTrackIdQuery:
+      name: "trackId"
+      in: "query"
+      required: true
+      description: "Numeric ID of a track owned by the authenticated listener."
+      schema:
+        type: "integer"
+        minimum: 1
+
+  responses:
+    Lyrics:
+      description: "Synced, plain, or instrumental lyrics for the requested track"
+      content:
+        application/json:
           schema:
-            type: string
-            pattern: '^[a-f0-9]{1,12}$'
-      responses:
-        '200':
-          description: Current job and per-track variant state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EncodeJob'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/ServerError'
+            $ref: "#/components/schemas/ListenerLyricsResponse"
+    LyricsBadRequest:
+      description: "Missing or invalid track ID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LyricsUnauthorized:
+      description: "Missing, invalid, or expired Listener App Password"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LyricsForbidden:
+      description: "Listener account is restricted or not permitted"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LyricsNotFound:
+      description: "Track is not owned by the listener, or no lyrics were found"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LyricsMethodNotAllowed:
+      description: "Lyrics endpoints only accept GET"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LyricsServerError:
+      description: "Database or internal server failure"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
-  /endpoints/data/track-encode-progress:
+security:
+  - BearerAuth: []
+  - AppKeyHeader: []
+
+paths:
+  # ── Account ─────────────────────────────────────────────────────────────────
+  /v1/account:
     get:
-      tags: [Encoding]
-      summary: Get the authenticated owner's aggregate encoding-queue progress
-      operationId: getTrackEncodeProgress
+      tags: ["Account"]
+      summary: "Get account profile"
+      operationId: "getAccount"
       responses:
-        '200':
-          description: Job and track totals for the current active encoding window
+        "200":
+          description: "Account profile"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EncodingProgress'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '405':
-          description: Only GET is supported
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          $ref: '#/components/responses/ServerError'
-
-  /endpoints/listener/uploads/track:
-    post:
-      tags: [Uploads]
-      summary: Upload a private single or album and queue encoding
-      operationId: uploadListenerTrack
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ListenerUploadForm'
-      responses:
-        '200':
-          description: Upload accepted and queued for encoding
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UploadAccepted'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '413':
-          description: Upload exceeds the listener's remaining quota
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          $ref: '#/components/responses/ServerError'
-
-  /endpoints/listener/apps/passwords:
-    get:
-      tags: [App Passwords]
-      summary: List active listener App Passwords
-      operationId: listListenerAppPasswords
-      responses:
-        '200':
-          description: Active keys; raw secrets are never returned
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [app_passwords]
-                properties:
-                  app_passwords:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/AppPasswordSummary'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-    post:
-      tags: [App Passwords]
-      summary: Create a listener App Password
-      operationId: createListenerAppPassword
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                label:
-                  type: string
-                  maxLength: 120
-                  examples: [Android TV]
-      responses:
-        '201':
-          description: App Password created; the raw key is shown only once
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [app_password, warning]
-                properties:
-                  app_password:
-                    $ref: '#/components/schemas/AppPasswordCreated'
-                  warning:
-                    type: string
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-    delete:
-      tags: [App Passwords]
-      summary: Revoke an App Password
-      operationId: revokeListenerAppPassword
-      parameters:
-        - $ref: '#/components/parameters/IdQuery'
-      responses:
-        '200':
-          description: App Password revoked
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /endpoints/listener/storage/regions:
-    get:
-      tags: [Storage]
-      summary: List available upload and migration regions
-      operationId: listListenerStorageRegions
-      responses:
-        '200':
-          description: Region configuration safe for client display
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [regions, default]
-                properties:
-                  regions:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/StorageRegion'
-                  default:
-                    $ref: '#/components/schemas/StorageRegionId'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /endpoints/listener/storage/information:
-    get:
-      tags: [Storage]
-      summary: Get listener storage usage and quota
-      operationId: getListenerStorageInformation
-      responses:
-        '200':
-          description: Current quota and usage
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StorageInformation'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /endpoints/listener/storage/pricing:
-    get:
-      tags: [Storage]
-      summary: Get localized storage-purchase constraints
-      operationId: getListenerStoragePricing
-      responses:
-        '200':
-          description: Purchase range and display currency
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StoragePricing'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /endpoints/listener/storage/quote:
-    post:
-      tags: [Storage]
-      summary: Quote an additional permanent-storage purchase
-      operationId: quoteListenerStorage
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [gb]
-              properties:
-                gb:
-                  type: integer
-                  minimum: 8
-                  maximum: 100
-      responses:
-        '200':
-          description: Authoritative localized quote
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StorageQuote'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /endpoints/data/economy:
-    get:
-      tags: [Membership and payments]
-      summary: Get membership products and localized prices
-      operationId: getListenerEconomy
-      responses:
-        '200':
-          description: Membership state, limits, and products
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Economy'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /endpoints/payments/payment-start:
-    post:
-      tags: [Membership and payments]
-      summary: Start a Stripe or NOWPayments checkout
-      operationId: startListenerPayment
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PaymentStartRequest'
-      responses:
-        '200':
-          description: Checkout session created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaymentStartResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          description: Purchase conflicts with current account state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '502':
-          description: Payment provider could not create a checkout
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /endpoints/settings/update-email:
-    post:
-      tags: [Account]
-      summary: Send an email-change verification message
-      operationId: requestListenerEmailChange
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [new_email]
-              properties:
-                new_email:
-                  type: string
-                  format: email
-      responses:
-        '200':
-          description: Verification email sent
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/ServerError'
-
-  /endpoints/listener/library/singles:
-    get:
-      tags: [Library]
-      summary: List loose tracks in the listener's library
-      operationId: listListenerSingles
-      parameters:
-        - $ref: '#/components/parameters/PageQuery'
-        - $ref: '#/components/parameters/LimitQuery'
-      responses:
-        '200':
-          description: Paginated loose tracks
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [success, singles, pagination]
+                type: "object"
                 properties:
                   success:
-                    type: boolean
-                    const: true
-                  singles:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/PortalTrack'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+                    type: "boolean"
+                  account:
+                    $ref: "#/components/schemas/Account"
+    patch:
+      tags: ["Account"]
+      summary: "Update account profile"
+      operationId: "updateAccount"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                displayname:
+                  type: "string"
+                  maxLength: 64
+                avatar:
+                  type: "string"
+                  format: "uri"
+                banner:
+                  type: "string"
+                  format: "uri"
+      responses:
+        "200":
+          description: "Updated account profile"
 
-  /endpoints/listener/library/albums:
+  /v1/account/passwords:
     get:
-      tags: [Library, Albums]
-      summary: List albums or get one album with tracks
-      operationId: getListenerAlbums
-      parameters:
-        - name: id
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
+      tags: ["Account"]
+      summary: "List App Passwords"
+      operationId: "listAppPasswords"
       responses:
-        '200':
-          description: Album list when `id` is absent; album detail when it is present
+        "200":
+          description: "Active App Passwords"
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/AlbumList'
-                  - $ref: '#/components/schemas/AlbumDetail'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /endpoints/functions/track-edit:
-    post:
-      tags: [Library]
-      summary: Edit or delete an owned track
-      operationId: editListenerTrack
-      description: |
-        The portal sends JSON for metadata-only edits and deletion, and multipart
-        form data when replacing cover art. This is a legacy shared endpoint.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TrackEditRequest'
-          multipart/form-data:
-            schema:
-              type: object
-              required: [trackId, trackMetadata]
-              properties:
-                trackId:
-                  type: integer
-                action:
-                  type: string
-                  enum: [update, delete]
-                trackMetadata:
-                  type: string
-                  description: JSON-encoded `TrackMetadata` object.
-                artCover:
-                  type: string
-                  format: binary
-      responses:
-        '200':
-          description: Track edited or deleted
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /endpoints/listener/albums/edit:
-    post:
-      tags: [Albums]
-      summary: Edit an owned listener album
-      operationId: editListenerAlbum
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AlbumEditRequest'
-          multipart/form-data:
-            schema:
-              allOf:
-                - $ref: '#/components/schemas/AlbumEditRequest'
-                - type: object
-                  properties:
-                    artCover:
-                      type: string
-                      format: binary
-      responses:
-        '200':
-          description: Album updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessMessageResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '415':
-          description: Unsupported cover-art format
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /endpoints/listener/library/album:
-    delete:
-      tags: [Albums]
-      summary: Delete an album and its tracks
-      operationId: deleteListenerAlbum
-      parameters:
-        - $ref: '#/components/parameters/IdQuery'
-      responses:
-        '200':
-          description: Album deleted; response may report partial track cleanup
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AlbumDeleteResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/ServerError'
-
-  /endpoints/listener/albums/attach:
-    post:
-      tags: [Albums]
-      summary: Attach a loose track to an owned album
-      operationId: attachListenerTrackToAlbum
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [track_id, album_id]
-              properties:
-                track_id:
-                  type: integer
-                  minimum: 1
-                album_id:
-                  type: integer
-                  minimum: 1
-      responses:
-        '200':
-          description: Track attached
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessMessageResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /endpoints/listener/playlists/list:
-    get:
-      tags: [Playlists]
-      summary: List playlists or get one playlist with tracks
-      operationId: getListenerPlaylists
-      parameters:
-        - name: id
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-        - $ref: '#/components/parameters/PageQuery'
-        - name: limit
-          in: query
-          required: false
-          description: A value of zero requests up to 500 tracks for playlist detail.
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 500
-      responses:
-        '200':
-          description: Playlist list when `id` is absent; detail when it is present
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: '#/components/schemas/PlaylistList'
-                  - $ref: '#/components/schemas/PlaylistDetail'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /endpoints/listener/playlists/create:
-    post:
-      tags: [Playlists]
-      summary: Create a listener playlist
-      operationId: createListenerPlaylist
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [playlist_name]
-              properties:
-                playlist_name:
-                  type: string
-                  minLength: 1
-                  maxLength: 255
-                playlist_description:
-                  type: string
-                  maxLength: 1000
-                isPrivate:
-                  type: integer
-                  enum: [1]
-      responses:
-        '200':
-          description: Playlist created
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [message, playlist_id]
+                type: "object"
                 properties:
-                  message:
-                    type: string
-                  playlist_id:
-                    oneOf:
-                      - type: integer
-                      - type: string
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /endpoints/listener/playlists/edit:
+                  success:
+                    type: "boolean"
+                  app_passwords:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AppPasswordListItem"
     post:
-      tags: [Playlists]
-      summary: Edit or delete a listener playlist
-      operationId: mutateListenerPlaylist
+      tags: ["Account"]
+      summary: "Create a new App Password"
+      description: |
+        Creates a new App Password. The raw key is returned **once** and cannot
+        be retrieved again. Maximum 5 active keys per account.
+      operationId: "createAppPassword"
       requestBody:
-        required: true
         content:
           application/json:
             schema:
-              oneOf:
-                - $ref: '#/components/schemas/PlaylistEditRequest'
-                - $ref: '#/components/schemas/PlaylistDeleteRequest'
+              type: "object"
+              properties:
+                label:
+                  type: "string"
+                  maxLength: 120
+                  description: "Optional label to identify this key"
       responses:
-        '200':
-          description: Playlist updated or deleted
+        "201":
+          description: "App Password created"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MessageResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  app_password:
+                    $ref: "#/components/schemas/AppPassword"
+                  warning:
+                    type: "string"
+        "409":
+          description: "Maximum keys reached (5)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
-  /endpoints/listener/playlists/tracks:
-    post:
-      tags: [Playlists]
-      summary: Add, remove, or reorder playlist tracks
-      operationId: mutateListenerPlaylistTracks
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PlaylistTracksRequest'
+  /v1/account/passwords/{id}:
+    delete:
+      tags: ["Account"]
+      summary: "Revoke an App Password"
+      operationId: "revokeAppPassword"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
       responses:
-        '200':
-          description: Track operation completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        "200":
+          description: "App Password revoked"
 
-  /endpoints/listener/migrations/start:
-    post:
-      tags: [Migrations]
-      summary: Queue storage-region migration jobs
-      operationId: startListenerMigration
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MigrationStartRequest'
-      responses:
-        '200':
-          description: Jobs queued, or all selected items were already in the target region
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MigrationStartResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          description: The listener already has a queued or active migration from one of the requested source regions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MigrationAlreadyActive'
-        '413':
-          description: The migration's projected post-move usage exceeds the listener's storage quota
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MigrationQuotaExceeded'
-        '500':
-          $ref: '#/components/responses/ServerError'
-
-  /endpoints/listener/migrations/progress:
+  /v1/account/storage:
     get:
-      tags: [Migrations]
-      summary: Get current storage-migration progress
-      operationId: getListenerMigrationProgress
+      tags: ["Account"]
+      summary: "Get storage quota and usage"
+      operationId: "getStorageInfo"
       responses:
-        '200':
-          description: Aggregate progress for the current migration window
+        "200":
+          description: "Storage info"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MigrationProgress'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  track_count:
+                    type: "integer"
+                  used_bytes:
+                    type: "integer"
+                  quota_bytes:
+                    type: "integer"
+                  quota_remaining_bytes:
+                    type: "integer"
 
+  # ── Library ─────────────────────────────────────────────────────────────────
+  /v1/library:
+    get:
+      tags: ["Library"]
+      summary: "Library overview"
+      description: "Returns artist info, recent tracks, and recent albums."
+      operationId: "getLibraryOverview"
+      responses:
+        "200":
+          description: "Library overview"
+
+  /v1/library/tracks:
+    get:
+      tags: ["Library"]
+      summary: "List all tracks"
+      operationId: "listTracks"
+      parameters:
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 50
+            maximum: 200
+        - name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+      responses:
+        "200":
+          description: "Paginated track list"
+
+  /v1/library/tracks/{id}:
+    get:
+      tags: ["Library"]
+      summary: "Get a single track"
+      operationId: "getLibraryTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Track details"
+        "404":
+          description: "Track not found"
+
+  /v1/library/albums:
+    get:
+      tags: ["Library"]
+      summary: "List all albums"
+      operationId: "listAlbums"
+      responses:
+        "200":
+          description: "Album list (includes Singles virtual album)"
+
+  /v1/library/albums/{id}:
+    get:
+      tags: ["Library"]
+      summary: "Get album with tracks"
+      operationId: "getLibraryAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Album with tracks"
+
+  /v1/library/artist:
+    get:
+      tags: ["Library"]
+      summary: "Get artist info"
+      description: "Returns the authenticated user as an artist object."
+      operationId: "getArtist"
+      responses:
+        "200":
+          description: "Artist info"
+
+  # ── Tracks ──────────────────────────────────────────────────────────────────
+  /v1/tracks/{id}:
+    get:
+      tags: ["Tracks"]
+      summary: "Get track details"
+      operationId: "getTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Track details"
+    delete:
+      tags: ["Tracks"]
+      summary: "Delete a track"
+      operationId: "deleteTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Track deleted"
+
+  /v1/tracks/{id}/stream:
+    get:
+      tags: ["Tracks"]
+      summary: "Get streaming URL"
+      operationId: "getStreamUrl"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Stream info"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  stream:
+                    $ref: "#/components/schemas/StreamInfo"
+
+  /v1/tracks/{id}/cover:
+    get:
+      tags: ["Tracks"]
+      summary: "Get cover art URL"
+      operationId: "getTrackCover"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Cover art URL"
+
+  /v1/tracks/{id}/variants:
+    get:
+      tags: ["Tracks"]
+      summary: "List available audio variants"
+      operationId: "getTrackVariants"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Available variants"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  success:
+                    type: "boolean"
+                  variants:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AudioVariant"
+
+  # ── Lyrics ──────────────────────────────────────────────────────────────────
   /v1/lyrics:
     get:
-      tags: [Listener v1]
-      summary: Get lyrics for an owned locker track
-      description: Query-parameter alias for `GET /v1/lyrics/{trackId}`.
-      operationId: getListenerV1LyricsByQuery
-      servers:
-        - url: https://listener.clippsly.app
-          description: Listener App Password API
+      tags: ["Lyrics"]
+      summary: "Get lyrics for an owned locker track"
+      description: "Query-parameter alias for `GET /v1/lyrics/{trackId}`."
+      operationId: "getLyricsByQuery"
       security:
-        - listenerAppPassword: []
+        - BearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/LyricsTrackIdQuery'
+        - $ref: "#/components/parameters/LyricsTrackIdQuery"
       responses:
-        '200':
-          $ref: '#/components/responses/ListenerLyrics'
-        '400':
-          $ref: '#/components/responses/ListenerV1BadRequest'
-        '401':
-          $ref: '#/components/responses/ListenerV1Unauthorized'
-        '403':
-          $ref: '#/components/responses/ListenerV1Forbidden'
-        '404':
-          $ref: '#/components/responses/ListenerV1NotFound'
-        '405':
-          $ref: '#/components/responses/ListenerV1MethodNotAllowed'
-        '500':
-          $ref: '#/components/responses/ListenerV1ServerError'
+        "200":
+          $ref: "#/components/responses/Lyrics"
+        "400":
+          $ref: "#/components/responses/LyricsBadRequest"
+        "401":
+          $ref: "#/components/responses/LyricsUnauthorized"
+        "403":
+          $ref: "#/components/responses/LyricsForbidden"
+        "404":
+          $ref: "#/components/responses/LyricsNotFound"
+        "405":
+          $ref: "#/components/responses/LyricsMethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/LyricsServerError"
 
   /v1/lyrics/{trackId}:
     get:
-      tags: [Listener v1]
-      summary: Get lyrics for an owned locker track
+      tags: ["Lyrics"]
+      summary: "Get lyrics for an owned locker track"
       description: |
         Fetches lyrics transiently from LRCLIB. Synced LRC lyrics are preferred,
         then plain lyrics; instrumental tracks return `instrumental: true` with
         null `lyrics` and `type`. Lyrics are not persisted by Clippsly.
-      operationId: getListenerV1Lyrics
-      servers:
-        - url: https://listener.clippsly.app
-          description: Listener App Password API
+      operationId: "getLyrics"
       security:
-        - listenerAppPassword: []
+        - BearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/LyricsTrackIdPath'
+        - $ref: "#/components/parameters/LyricsTrackIdPath"
       responses:
-        '200':
-          $ref: '#/components/responses/ListenerLyrics'
-        '400':
-          $ref: '#/components/responses/ListenerV1BadRequest'
-        '401':
-          $ref: '#/components/responses/ListenerV1Unauthorized'
-        '403':
-          $ref: '#/components/responses/ListenerV1Forbidden'
-        '404':
-          $ref: '#/components/responses/ListenerV1NotFound'
-        '405':
-          $ref: '#/components/responses/ListenerV1MethodNotAllowed'
-        '500':
-          $ref: '#/components/responses/ListenerV1ServerError'
+        "200":
+          $ref: "#/components/responses/Lyrics"
+        "400":
+          $ref: "#/components/responses/LyricsBadRequest"
+        "401":
+          $ref: "#/components/responses/LyricsUnauthorized"
+        "403":
+          $ref: "#/components/responses/LyricsForbidden"
+        "404":
+          $ref: "#/components/responses/LyricsNotFound"
+        "405":
+          $ref: "#/components/responses/LyricsMethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/LyricsServerError"
 
   /v1/tracks/{trackId}/lyrics:
     get:
-      tags: [Listener v1]
-      summary: Get lyrics through the track sub-resource
-      description: Equivalent to `GET /v1/lyrics/{trackId}`.
-      operationId: getListenerV1TrackLyrics
-      servers:
-        - url: https://listener.clippsly.app
-          description: Listener App Password API
+      tags: ["Lyrics"]
+      summary: "Get lyrics through the track sub-resource"
+      description: "Equivalent to `GET /v1/lyrics/{trackId}`."
+      operationId: "getTrackLyrics"
       security:
-        - listenerAppPassword: []
+        - BearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/LyricsTrackIdPath'
+        - $ref: "#/components/parameters/LyricsTrackIdPath"
       responses:
-        '200':
-          $ref: '#/components/responses/ListenerLyrics'
-        '400':
-          $ref: '#/components/responses/ListenerV1BadRequest'
-        '401':
-          $ref: '#/components/responses/ListenerV1Unauthorized'
-        '403':
-          $ref: '#/components/responses/ListenerV1Forbidden'
-        '404':
-          $ref: '#/components/responses/ListenerV1NotFound'
-        '405':
-          $ref: '#/components/responses/ListenerV1MethodNotAllowed'
-        '500':
-          $ref: '#/components/responses/ListenerV1ServerError'
+        "200":
+          $ref: "#/components/responses/Lyrics"
+        "400":
+          $ref: "#/components/responses/LyricsBadRequest"
+        "401":
+          $ref: "#/components/responses/LyricsUnauthorized"
+        "403":
+          $ref: "#/components/responses/LyricsForbidden"
+        "404":
+          $ref: "#/components/responses/LyricsNotFound"
+        "405":
+          $ref: "#/components/responses/LyricsMethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/LyricsServerError"
 
-components:
-  securitySchemes:
-    websiteSession:
-      type: http
-      scheme: bearer
-      bearerFormat: CLIPSESSIONTOKEN
-      description: Website session token copied from the `CLIPSESSIONTOKEN` cookie.
-    listenerAppPassword:
-      type: http
-      scheme: bearer
-      bearerFormat: Clippsly listener App Password
-      description: Listener App Password created in the Clippsly listener portal.
-  parameters:
-    IdQuery:
-      name: id
-      in: query
-      required: true
-      schema:
-        type: integer
-        minimum: 1
-    PageQuery:
-      name: page
-      in: query
-      required: false
-      schema:
-        type: integer
-        minimum: 1
-        default: 1
-    LimitQuery:
-      name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 200
-        default: 12
-    IdempotencyKey:
-      name: Idempotency-Key
-      in: header
-      required: true
-      description: Reuse the same opaque key when retrying one checkout attempt.
-      schema:
-        type: string
-        minLength: 16
-        maxLength: 128
-        pattern: '^[A-Za-z0-9._:-]+$'
-    LyricsTrackIdPath:
-      name: trackId
-      in: path
-      required: true
-      description: Numeric ID of a track owned by the authenticated listener.
-      schema:
-        type: integer
-        minimum: 1
-    LyricsTrackIdQuery:
-      name: trackId
-      in: query
-      required: true
-      description: Numeric ID of a track owned by the authenticated listener.
-      schema:
-        type: integer
-        minimum: 1
-  responses:
-    BadRequest:
-      description: Invalid request
-      content:
-        application/json:
+  # ── Albums ──────────────────────────────────────────────────────────────────
+  /v1/albums/{id}:
+    get:
+      tags: ["Albums"]
+      summary: "Get album with tracks"
+      operationId: "getAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    Unauthorized:
-      description: Missing, invalid, or expired website session
-      content:
-        application/json:
+            type: "integer"
+      responses:
+        "200":
+          description: "Album with tracks"
+    patch:
+      tags: ["Albums"]
+      summary: "Update album metadata"
+      operationId: "updateAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    Forbidden:
-      description: Account or operation is not permitted
-      content:
-        application/json:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                Title:
+                  type: "string"
+                Artist:
+                  type: "string"
+                isPrivate:
+                  type: "integer"
+      responses:
+        "200":
+          description: "Updated album"
+    delete:
+      tags: ["Albums"]
+      summary: "Delete album"
+      operationId: "deleteAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    NotFound:
-      description: Resource not found
-      content:
-        application/json:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                delete_tracks:
+                  type: "boolean"
+                  description: "Also delete tracks in this album"
+      responses:
+        "200":
+          description: "Album deleted"
+
+  /v1/albums/{id}/cover:
+    get:
+      tags: ["Albums"]
+      summary: "Get album cover art URL"
+      operationId: "getAlbumCover"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    ServerError:
-      description: Server-side failure
-      content:
-        application/json:
+            type: "integer"
+      responses:
+        "200":
+          description: "Cover art URL"
+
+  /v1/albums/{id}/tracks:
+    post:
+      tags: ["Albums"]
+      summary: "Add tracks to album"
+      operationId: "addTracksToAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    TooManyRequests:
-      description: Request rate or operation cooldown exceeded
-      headers:
-        Retry-After:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+      responses:
+        "201":
+          description: "Tracks added"
+
+  /v1/albums/{id}/tracks/{trackId}:
+    delete:
+      tags: ["Albums"]
+      summary: "Remove track from album"
+      operationId: "removeTrackFromAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            type: integer
-            minimum: 1
-      content:
-        application/json:
+            type: "integer"
+        - name: "trackId"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    ListenerLyrics:
-      description: Synced, plain, or instrumental lyrics for the requested track
-      content:
-        application/json:
+            type: "integer"
+      responses:
+        "200":
+          description: "Track removed"
+
+  /v1/albums/{id}/reorder:
+    put:
+      tags: ["Albums"]
+      summary: "Reorder album tracks"
+      operationId: "reorderAlbumTracks"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ListenerLyricsResponse'
-    ListenerV1BadRequest:
-      description: Missing or invalid track ID
-      content:
-        application/json:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+                  description: "Ordered array of track IDs"
+      responses:
+        "200":
+          description: "Tracks reordered"
+
+  # ── Playlists ───────────────────────────────────────────────────────────────
+  /v1/playlists:
+    get:
+      tags: ["Playlists"]
+      summary: "List all playlists"
+      operationId: "listPlaylists"
+      responses:
+        "200":
+          description: "Playlists"
+    post:
+      tags: ["Playlists"]
+      summary: "Create a playlist"
+      operationId: "createPlaylist"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["name"]
+              properties:
+                name:
+                  type: "string"
+                  maxLength: 255
+                description:
+                  type: "string"
+                  maxLength: 1000
+      responses:
+        "201":
+          description: "Playlist created"
+
+  /v1/playlists/{id}:
+    get:
+      tags: ["Playlists"]
+      summary: "Get playlist with tracks"
+      operationId: "getPlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ListenerV1ErrorResponse'
-    ListenerV1Unauthorized:
-      description: Missing, invalid, or expired listener App Password
-      content:
-        application/json:
+            type: "integer"
+      responses:
+        "200":
+          description: "Playlist with tracks"
+    patch:
+      tags: ["Playlists"]
+      summary: "Update playlist"
+      operationId: "updatePlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ListenerV1ErrorResponse'
-    ListenerV1Forbidden:
-      description: Listener account is restricted or not permitted
-      content:
-        application/json:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                playlist_name:
+                  type: "string"
+                playlist_description:
+                  type: "string"
+      responses:
+        "200":
+          description: "Updated playlist"
+    delete:
+      tags: ["Playlists"]
+      summary: "Delete playlist"
+      operationId: "deletePlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ListenerV1ErrorResponse'
-    ListenerV1NotFound:
-      description: Track is not owned by the listener, or no lyrics were found
-      content:
-        application/json:
+            type: "integer"
+      responses:
+        "200":
+          description: "Playlist deleted"
+
+  /v1/playlists/{id}/tracks:
+    post:
+      tags: ["Playlists"]
+      summary: "Add tracks to playlist"
+      operationId: "addTracksToPlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ListenerV1ErrorResponse'
-    ListenerV1MethodNotAllowed:
-      description: Lyrics endpoints only accept GET
-      content:
-        application/json:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+      responses:
+        "201":
+          description: "Tracks added"
+    delete:
+      tags: ["Playlists"]
+      summary: "Remove tracks from playlist"
+      operationId: "removeTracksFromPlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ListenerV1ErrorResponse'
-    ListenerV1ServerError:
-      description: Database or internal server failure
-      content:
-        application/json:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+      responses:
+        "200":
+          description: "Tracks removed"
+
+  /v1/playlists/{id}/reorder:
+    put:
+      tags: ["Playlists"]
+      summary: "Reorder playlist tracks"
+      operationId: "reorderPlaylistTracks"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
           schema:
-            $ref: '#/components/schemas/ListenerV1ErrorResponse'
-  schemas:
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: string
-        code:
-          type: string
-        message:
-          type: string
-        moderated:
-          type: boolean
-      additionalProperties: true
-    ListenerLyricsResponse:
-      type: object
-      required: [success, instrumental, lyrics, type, source, trackName, artistName, albumName]
-      properties:
-        success:
-          type: boolean
-          const: true
-        instrumental:
-          type: boolean
-        lyrics:
-          type: [string, 'null']
-          description: Synced LRC or plain lyric text; null for instrumental tracks.
-        type:
-          type: [string, 'null']
-          enum: [synced, plain, null]
-        source:
-          type: string
-          const: lrclib
-        trackName:
-          type: string
-        artistName:
-          type: string
-        albumName:
-          type: [string, 'null']
-      additionalProperties: false
-    ListenerV1ErrorResponse:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message]
-          properties:
-            code:
-              type: string
-              examples: [lyrics_not_found]
-            message:
-              type: string
-          additionalProperties: false
-      additionalProperties: false
-    MessageResponse:
-      type: object
-      required: [message]
-      properties:
-        message:
-          type: string
-      additionalProperties: true
-    SuccessMessageResponse:
-      allOf:
-        - $ref: '#/components/schemas/MessageResponse'
-        - type: object
-          required: [success]
-          properties:
-            success:
-              type: boolean
-              const: true
-    StorageRegionId:
-      type: string
-      enum: [eu, na, asia, au, multi]
-    AlbumStorageRegionId:
-      type: string
-      description: A single storage region, or `mixed` when album tracks span regions.
-      enum: [eu, na, asia, au, multi, mixed]
-    StorageRegion:
-      type: object
-      required: [id, name, location, quota_multiplier]
-      properties:
-        id:
-          $ref: '#/components/schemas/StorageRegionId'
-        name:
-          type: string
-        location:
-          type: string
-        quota_multiplier:
-          type: number
-          minimum: 1
-        recommended:
-          type: boolean
-      additionalProperties: true
-    AppPasswordSummary:
-      type: object
-      required: [id, key_prefix, created_at]
-      properties:
-        id:
-          type: integer
-        key_prefix:
-          type: string
-        label:
-          type: [string, 'null']
-        created_at:
-          type: integer
-        last_used_at:
-          type: [integer, 'null']
-    AppPasswordCreated:
-      allOf:
-        - $ref: '#/components/schemas/AppPasswordSummary'
-        - type: object
-          required: [account_key]
-          properties:
-            account_key:
-              type: string
-              writeOnly: true
-    CreatorShowcase:
-      type: object
-      required: [highlightedTracks]
-      properties:
-        highlightedTracks:
-          type: array
-          items:
-            type: object
-            required: [id, title, artCover, authorUsername, authorDisplay, authorAvatar, authorVerified]
-            properties:
-              id:
-                type: integer
-              title:
-                type: string
-              artCover:
-                type: string
-                format: uri
-              authorUsername:
-                type: string
-              authorDisplay:
-                type: string
-              authorAvatar:
-                type: string
-                format: uri
-              authorVerified:
-                type: boolean
-      additionalProperties: true
-    ListenerUploadForm:
-      type: object
-      required: [mode, trackAudio, trackSource]
-      properties:
-        mode:
-          type: string
-          enum: [single, album]
-        trackAudio:
-          oneOf:
-            - type: string
-              format: binary
-            - type: array
-              items:
-                type: string
-                format: binary
-          description: One file for `single`; at least three files for `album`.
-        artCover:
-          type: string
-          format: binary
-        trackTitle:
-          oneOf:
-            - type: string
-            - type: array
-              items:
-                type: string
-        trackArtist:
-          type: string
-        trackDescription:
-          type: string
-          maxLength: 500
-        trackGenre:
-          type: string
-        trackExplicit:
-          $ref: '#/components/schemas/FormBoolean'
-        trackAI:
-          $ref: '#/components/schemas/FormBoolean'
-        albumName:
-          type: string
-        albumArtist:
-          type: string
-        albumGenre:
-          type: string
-        albumExplicit:
-          $ref: '#/components/schemas/FormBoolean'
-        musicbrainz_lookup:
-          $ref: '#/components/schemas/FormBoolean'
-        trackSource:
-          type: string
-          enum:
-            - self_produced
-            - cd_rip
-            - vinyl_rip
-            - digital_store
-            - bandcamp
-            - qobuz
-            - itunes
-            - amazon_music
-            - beatport
-            - direct_from_artist
-            - other
-        trackSourceCustom:
-          type: string
-        storageQuality:
-          type: string
-          enum: [aac, lossless]
-        storageRegion:
-          $ref: '#/components/schemas/StorageRegionId'
-    FormBoolean:
-      type: string
-      enum: ['0', '1']
-    UploadAccepted:
-      type: object
-      required: [success, message, mode, encode_job_id, isPrivate]
-      properties:
-        success:
-          type: boolean
-          const: true
-        message:
-          type: string
-        mode:
-          type: string
-          enum: [single, album, folder]
-        track_id:
-          type: integer
-        track_ids:
-          type: array
-          items:
-            type: integer
-        album_id:
-          type: integer
-        encode_job_id:
-          type: string
-          pattern: '^[a-f0-9]{1,12}$'
-        isPrivate:
-          type: boolean
-        trackSource:
-          type: string
-        trackSourceCustom:
-          type: [string, 'null']
-    EncodeJob:
-      type: object
-      required: [job_id, status, tracks, created_at, updated_at]
-      properties:
-        job_id:
-          type: string
-        status:
-          type: string
-          enum: [pending, encoding, done, failed]
-        tracks:
-          type: array
-          items:
-            type: object
-            required: [track_id, variants]
-            properties:
-              track_id:
-                type: integer
-              variants:
-                type: object
-                additionalProperties:
-                  type: string
-        error:
-          type: [string, 'null']
-        created_at:
-          type: integer
-        updated_at:
-          type: integer
-    StorageInformation:
-      type: object
-      required:
-        - usedStorageBytes
-        - totalStorageBytes
-        - remainingStorageBytes
-        - usedStorageFormatted
-        - remainingStorageFormatted
-        - membershipStorageGb
-        - additionalStorageGb
-        - totalStorageGb
-        - trackCount
-      properties:
-        usedStorageBytes:
-          type: integer
-        totalStorageBytes:
-          type: integer
-        remainingStorageBytes:
-          type: integer
-        usedStorageFormatted:
-          type: string
-        remainingStorageFormatted:
-          type: string
-        membershipStorageGb:
-          type: number
-        additionalStorageGb:
-          type: number
-        totalStorageGb:
-          type: number
-        trackCount:
-          type: integer
-      additionalProperties: true
-    StoragePricing:
-      type: object
-      required: [min_gb, max_gb, step_gb, purchasable, currency, currency_symbol, currency_display]
-      properties:
-        min_gb:
-          type: integer
-        max_gb:
-          type: integer
-        step_gb:
-          type: integer
-        purchasable:
-          type: boolean
-        currency:
-          type: string
-        currency_symbol:
-          type: string
-        currency_display:
-          type: string
-    StorageQuote:
-      type: object
-      required: [gb, currency, price_minor, price_formatted, crypto_min_gb, crypto_available]
-      properties:
-        gb:
-          type: integer
-        currency:
-          type: string
-        price_minor:
-          type: integer
-        price_formatted:
-          type: string
-        crypto_min_gb:
-          type: integer
-        crypto_available:
-          type: boolean
-      additionalProperties: true
-    Economy:
-      type: object
-      required: [displayName, membershipTier, membershipName, products]
-      properties:
-        displayName:
-          type: string
-        membershipTier:
-          type: integer
-          minimum: 0
-          maximum: 3
-        membershipName:
-          type: string
-        regionalPricing:
-          type: object
-          additionalProperties: true
-        access:
-          type: object
-          additionalProperties: true
-        limits:
-          type: object
-          additionalProperties: true
-        canUpgradeToPlus:
-          type: boolean
-        canUpgradeToPro:
-          type: boolean
-        canUpgradeToProducer:
-          type: boolean
-        products:
-          type: array
-          items:
-            $ref: '#/components/schemas/EconomyProduct'
-    EconomyProduct:
-      type: object
-      required: [id, prices]
-      properties:
-        id:
-          type: string
-        prices:
-          type: object
-          required: [currency, amount, display_price]
-          properties:
-            currency:
-              type: string
-            amount:
-              type: string
-            display_price:
-              type: string
-            exchange_rate:
-              type: number
-            discounts:
-              type: [object, 'null']
-              additionalProperties: true
-            robux:
-              type: [integer, 'null']
-          additionalProperties: true
-      additionalProperties: true
-    PaymentStartRequest:
-      type: object
-      required: [product_type]
-      properties:
-        product_type:
-          type: string
-          enum:
-            - newbie_membership
-            - standard_membership
-            - producer_membership
-            - standard_upgrade
-            - producer_upgrade
-            - storage
-        payment_provider:
-          type: string
-          enum: [stripe, nowpayments]
-          default: stripe
-        storage_gb:
-          type: integer
-          minimum: 8
-          maximum: 100
-      allOf:
-        - if:
-            properties:
-              product_type:
-                const: storage
-          then:
-            required: [storage_gb]
-    PaymentStartResponse:
-      type: object
-      required: [checkout_url, product_type, requested_product_type, payment_provider]
-      properties:
-        checkout_url:
-          type: string
-          format: uri
-        product_type:
-          type: string
-        requested_product_type:
-          type: string
-        payment_provider:
-          type: string
-          enum: [stripe, nowpayments]
-        idempotent_replay:
-          type: boolean
-    PortalAuthor:
-      type: object
-      properties:
-        authorUsername:
-          type: string
-        authorDisplay:
-          type: string
-        authorAvatar:
-          type: [string, 'null']
-        authorVerified:
-          type: boolean
-    PortalTrack:
-      type: object
-      required: [releaseID, releaseName, releaseAuthor, isExplicit, isPrivate]
-      properties:
-        releaseID:
-          type: integer
-        releaseName:
-          type: string
-        releaseAuthor:
-          $ref: '#/components/schemas/PortalAuthor'
-        artistName:
-          type: string
-        releaseGenre:
-          type: [string, 'null']
-        isExplicit:
-          type: boolean
-        isPrivate:
-          type: boolean
-        storageRegion:
-          $ref: '#/components/schemas/StorageRegionId'
-        additionalData:
-          type: object
-          properties:
-            audioDuration:
-              type: [string, number, 'null']
-            releaseCoverArt:
-              type: [string, 'null']
-            releaseDescription:
-              type: [string, 'null']
-          additionalProperties: true
-        albumDetails:
-          oneOf:
-            - type: boolean
-            - type: object
-              additionalProperties: true
-      additionalProperties: true
-    Pagination:
-      type: object
-      properties:
-        currentPage:
-          type: integer
-        totalPages:
-          type: integer
-        total:
-          type: integer
-        perPage:
-          type: integer
-        hasNext:
-          type: boolean
-        hasPrevious:
-          type: boolean
-        totalTracks:
-          type: integer
-        totalPlaylists:
-          type: integer
-      additionalProperties: true
-    AlbumSummary:
-      type: object
-      required: [albumId, title, isPrivate, createdAt, totalTracks, storageRegion]
-      properties:
-        albumId:
-          type: integer
-        title:
-          type: string
-        artist:
-          type: [string, 'null']
-        coverArt:
-          type: [string, 'null']
-        isPrivate:
-          type: boolean
-        createdAt:
-          type: integer
-        totalTracks:
-          type: integer
-        storageRegion:
-          $ref: '#/components/schemas/AlbumStorageRegionId'
-        owner:
-          type: object
-          additionalProperties: true
-    AlbumList:
-      type: object
-      required: [albums, total]
-      properties:
-        albums:
-          type: array
-          items:
-            $ref: '#/components/schemas/AlbumSummary'
-        total:
-          type: integer
-    AlbumDetail:
-      allOf:
-        - $ref: '#/components/schemas/AlbumSummary'
-        - type: object
-          required: [tracks]
-          properties:
-            tracks:
-              type: array
-              items:
-                $ref: '#/components/schemas/PortalTrack'
-    TrackMetadata:
-      type: object
-      required: [trackTitle, trackDescription, trackComments, trackPrivate]
-      properties:
-        trackTitle:
-          type: string
-        trackDescription:
-          type: string
-        trackComments:
-          type: boolean
-        trackPrivate:
-          type: boolean
-    TrackEditRequest:
-      type: object
-      required: [trackId]
-      properties:
-        trackId:
-          oneOf:
-            - type: integer
-            - type: string
-        action:
-          type: string
-          enum: [update, delete]
-          default: update
-        trackMetadata:
-          $ref: '#/components/schemas/TrackMetadata'
-    AlbumEditRequest:
-      type: object
-      required: [album_id, title]
-      properties:
-        album_id:
-          type: integer
-          minimum: 1
-        title:
-          type: string
-          minLength: 1
-        artist:
-          type: string
-    AlbumDeleteResponse:
-      allOf:
-        - $ref: '#/components/schemas/MessageResponse'
-        - type: object
-          required: [album_id, tracks_deleted]
-          properties:
-            album_id:
-              type: integer
-            tracks_deleted:
-              type: integer
-            partial_cleanup:
-              type: boolean
-            failed_tracks:
-              type: array
-              items:
-                type: object
-                additionalProperties: true
-    PlaylistSummary:
-      type: object
-      required: [playlist_id, playlist_name, isPrivate, created_at]
-      properties:
-        playlist_id:
-          oneOf:
-            - type: integer
-            - type: string
-        playlist_name:
-          type: string
-        playlist_description:
-          type: [string, 'null']
-        isPrivate:
-          type: boolean
-        created_at:
-          type: integer
-        cover_art:
-          type: [string, 'null']
-        track_count:
-          type: integer
-    PlaylistList:
-      type: object
-      required: [pagination, playlists]
-      properties:
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-        playlists:
-          type: array
-          items:
-            $ref: '#/components/schemas/PlaylistSummary'
-    PlaylistDetail:
-      allOf:
-        - $ref: '#/components/schemas/PlaylistSummary'
-        - type: object
-          required: [tracks, pagination]
-          properties:
-            tracks:
-              type: array
-              items:
-                $ref: '#/components/schemas/PortalTrack'
-            pagination:
-              $ref: '#/components/schemas/Pagination'
-            owner:
-              type: object
-              additionalProperties: true
-    PlaylistEditRequest:
-      type: object
-      required: [playlist_id, action, playlist_name]
-      properties:
-        playlist_id:
-          type: integer
-        action:
-          type: string
-          const: edit
-        playlist_name:
-          type: string
-          minLength: 1
-        playlist_description:
-          type: string
-        isPrivate:
-          type: integer
-          enum: [1]
-    PlaylistDeleteRequest:
-      type: object
-      required: [playlist_id, action]
-      properties:
-        playlist_id:
-          type: integer
-        action:
-          type: string
-          const: delete
-    PlaylistTracksRequest:
-      oneOf:
-        - type: object
-          required: [playlist_id, action, track_id]
-          properties:
-            playlist_id:
-              type: integer
-            action:
-              type: string
-              enum: [add, remove]
-            track_id:
-              type: integer
-        - type: object
-          required: [playlist_id, action, tracks]
-          properties:
-            playlist_id:
-              type: integer
-            action:
-              type: string
-              const: reorder
-            tracks:
-              type: array
-              items:
-                type: object
-                required: [track_id, position]
-                properties:
-                  track_id:
-                    type: integer
-                  position:
-                    type: integer
-                    minimum: 1
-    MigrationStartRequest:
-      type: object
-      required: [to_region]
-      properties:
-        to_region:
-          $ref: '#/components/schemas/StorageRegionId'
-        track_ids:
-          type: array
-          items:
-            type: integer
-        album_ids:
-          type: array
-          items:
-            type: integer
-        full_library:
-          type: boolean
-      anyOf:
-        - required: [track_ids]
-        - required: [album_ids]
-        - properties:
-            full_library:
-              const: true
-          required: [full_library]
-    MigrationStartResponse:
-      type: object
-      required: [success, message, migration_ids, job_count]
-      properties:
-        success:
-          type: boolean
-          const: true
-        message:
-          type: string
-        migration_ids:
-          type: array
-          items:
-            oneOf:
-              - type: integer
-              - type: string
-        job_count:
-          type: integer
-    MigrationQuotaExceeded:
-      type: object
-      required: [error, code, storage]
-      properties:
-        error:
-          type: string
-        code:
-          type: string
-          const: migration_quota_exceeded
-        storage:
-          type: object
-          required: [currentUsageBytes, projectedUsageBytes, totalQuotaBytes, additionalRequiredBytes]
-          properties:
-            currentUsageBytes:
-              type: integer
-            projectedUsageBytes:
-              type: integer
-            totalQuotaBytes:
-              type: integer
-            additionalRequiredBytes:
-              type: integer
-    MigrationAlreadyActive:
-      type: object
-      required: [error, code, active_migration]
-      properties:
-        error:
-          type: string
-        code:
-          type: string
-          const: migration_already_active
-        active_migration:
-          type: object
-          required: [migration_id, from_region, to_region, status]
-          properties:
-            migration_id:
-              type: string
-            from_region:
-              $ref: '#/components/schemas/StorageRegionId'
-            to_region:
-              $ref: '#/components/schemas/StorageRegionId'
-            status:
-              type: string
-    EncodingProgress:
-      type: object
-      required: [active, pending, processing, done, failed, total, tracks, percent]
-      properties:
-        active:
-          type: boolean
-        pending:
-          type: integer
-        processing:
-          type: integer
-        done:
-          type: integer
-        failed:
-          type: integer
-        total:
-          type: integer
-        tracks:
-          type: object
-          required: [pending, processing, done, failed, total]
-          properties:
-            pending:
-              type: integer
-            processing:
-              type: integer
-            done:
-              type: integer
-            failed:
-              type: integer
-            total:
-              type: integer
-        percent:
-          type: integer
-          minimum: 0
-          maximum: 100
-        current:
-          type: object
-          properties:
-            job_id:
-              type: string
-            status:
-              type: string
-              enum: [pending, encoding]
-            tracks_done:
-              type: integer
-            tracks_total:
-              type: integer
-            variants_done:
-              type: integer
-            variants_total:
-              type: integer
-            percent:
-              type: integer
-              minimum: 0
-              maximum: 100
-      additionalProperties: false
-    MigrationProgress:
-      type: object
-      required: [active, pending, processing, done, failed, total]
-      properties:
-        active:
-          type: boolean
-        pending:
-          type: integer
-        processing:
-          type: integer
-        done:
-          type: integer
-        failed:
-          type: integer
-        total:
-          type: integer
-        current:
-          type: object
-          properties:
-            migration_id:
-              oneOf:
-                - type: integer
-                - type: string
-            track_id:
-              type: integer
-            album_id:
-              type: [integer, 'null']
-            album_name:
-              type: [string, 'null']
-            from_region:
-              type: string
-            to_region:
-              type: string
-            current_step:
-              type: string
-            current_object:
-              type: [string, 'null']
-            objects_completed:
-              type: integer
-            total_objects:
-              type: integer
-            percent:
-              type: number
-          additionalProperties: true
-      additionalProperties: true
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                track_ids:
+                  type: "array"
+                  items:
+                    type: "integer"
+                  description: "Ordered array of track IDs"
+      responses:
+        "200":
+          description: "Tracks reordered"
+
+  # ── Upload ──────────────────────────────────────────────────────────────────
+  /v1/upload:
+    post:
+      tags: ["Upload"]
+      summary: "Upload a single track"
+      operationId: "uploadTrack"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: "object"
+              required: ["audio"]
+              properties:
+                audio:
+                  type: "string"
+                  format: "binary"
+                  description: "Audio file (MP3, M4A, FLAC, WAV, OGG, OPUS, WMA, AIFF)"
+                cover:
+                  type: "string"
+                  format: "binary"
+                  description: "Cover art image (JPEG, PNG, WebP, GIF)"
+                title:
+                  type: "string"
+                artist:
+                  type: "string"
+                genre:
+                  type: "string"
+                description:
+                  type: "string"
+                is_explicit:
+                  type: "boolean"
+      responses:
+        "201":
+          description: "Track uploaded"
+        "413":
+          description: "File too large (max 500 MB)"
+        "415":
+          description: "Unsupported format"
+
+  /v1/upload/album:
+    post:
+      tags: ["Upload"]
+      summary: "Upload tracks as an album"
+      operationId: "uploadAlbum"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: "object"
+              required: ["files"]
+              properties:
+                files:
+                  type: "array"
+                  items:
+                    type: "string"
+                    format: "binary"
+                  description: "Multiple audio files"
+                cover:
+                  type: "string"
+                  format: "binary"
+                album_title:
+                  type: "string"
+                artist:
+                  type: "string"
+      responses:
+        "201":
+          description: "Album created with tracks"
+
+  # ── Search ──────────────────────────────────────────────────────────────────
+  /v1/search:
+    get:
+      tags: ["Search"]
+      summary: "Search your locker"
+      operationId: "search"
+      parameters:
+        - name: "q"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 50
+            maximum: 200
+        - name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+      responses:
+        "200":
+          description: "Search results"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResult"
+
+  /v1/search/suggest:
+    get:
+      tags: ["Search"]
+      summary: "Quick search suggestions (autocomplete)"
+      operationId: "suggest"
+      parameters:
+        - name: "q"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 10
+            maximum: 50
+      responses:
+        "200":
+          description: "Suggestions"
+
+  # ── Edit ────────────────────────────────────────────────────────────────────
+  /v1/edit/tracks/{id}:
+    patch:
+      tags: ["Edit"]
+      summary: "Edit track metadata"
+      operationId: "editTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                title:
+                  type: "string"
+                artist:
+                  type: "string"
+                genre:
+                  type: "string"
+                description:
+                  type: "string"
+                is_explicit:
+                  type: "boolean"
+                is_ai_generated:
+                  type: "boolean"
+                is_private:
+                  type: "boolean"
+      responses:
+        "200":
+          description: "Track updated"
+
+  /v1/edit/albums/{id}:
+    patch:
+      tags: ["Edit"]
+      summary: "Edit album metadata"
+      operationId: "editAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                title:
+                  type: "string"
+                artist:
+                  type: "string"
+                is_private:
+                  type: "boolean"
+      responses:
+        "200":
+          description: "Album updated"
+
+  # ── Playback ────────────────────────────────────────────────────────────────
+  /v1/playback:
+    get:
+      tags: ["Playback"]
+      summary: "Playback API overview"
+      description: "Returns available playback sub-endpoints and your library track count."
+      operationId: "playbackOverview"
+      responses:
+        "200":
+          description: "Playback overview"
+
+  /v1/playback/track/{id}:
+    get:
+      tags: ["Playback"]
+      summary: "Get a single track ready for playback"
+      description: "Returns the track with a signed stream URL and all available audio variants. Only your own tracks."
+      operationId: "playbackTrack"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Track ready for playback"
+        "404":
+          description: "Track not found in your library"
+
+  /v1/playback/track/{id}/next:
+    get:
+      tags: ["Playback"]
+      summary: "Get the next track after this one"
+      description: |
+        Auto-advance logic:
+        - If the track is in an album, returns the next album track
+        - Otherwise, returns a random track from your library
+        - Set `?looped=true` to repeat the same track
+        - NEVER falls back to Clippsly's public catalog
+      operationId: "playbackTrackNext"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "looped"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Next track or stop signal"
+
+  /v1/playback/album/{id}:
+    get:
+      tags: ["Playback"]
+      summary: "Build an album playback queue"
+      description: |
+        Returns all album tracks in order (or shuffled).
+        Only your own albums — all tracks are already scoped to your library.
+      operationId: "playbackAlbum"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "shuffled"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Album playback queue"
+        "404":
+          description: "Album not found"
+
+  /v1/playback/playlist/{id}:
+    get:
+      tags: ["Playback"]
+      summary: "Build a playlist playback queue"
+      description: |
+        Returns playlist tracks in order (or shuffled). Public tracks added
+        to the playlist are silently skipped — only YOUR tracks are playable.
+      operationId: "playbackPlaylist"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "shuffled"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+        - name: "playedIds"
+          in: "query"
+          schema:
+            type: "string"
+            description: "Comma-separated track IDs already played (for shuffle session state)"
+      responses:
+        "200":
+          description: "Playlist playback queue"
+
+  /v1/playback/playlist/{id}/next:
+    get:
+      tags: ["Playback"]
+      summary: "Get the next track in a playlist"
+      description: |
+        Sequential or shuffled next-track resolution during playlist playback.
+        Supports loop and shuffle with played-ID awareness.
+      operationId: "playbackPlaylistNext"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "currentTrackId"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+        - name: "shuffled"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "looped"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        - name: "playedIds"
+          in: "query"
+          schema:
+            type: "string"
+            description: "Comma-separated track IDs already played (shuffle state)"
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Next track or stop signal"
+
+  /v1/playback/lucky-dip:
+    get:
+      tags: ["Playback"]
+      summary: "Random track from your library"
+      description: |
+        Returns a single random track from your library. Optionally exclude a
+        track ID to avoid repeats. NEVER accesses Clippsly's public catalog.
+      operationId: "playbackLuckyDip"
+      parameters:
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+        - name: "excludeTrackId"
+          in: "query"
+          schema:
+            type: "integer"
+            description: "Track ID to exclude from the random selection"
+      responses:
+        "200":
+          description: "Random track or stop if library is empty"
+
+  /v1/playback/queue:
+    get:
+      tags: ["Playback"]
+      summary: "Random playback queue from your library"
+      description: |
+        Returns a shuffled queue of random tracks from your library.
+        Perfect for "shuffle all" functionality.
+      operationId: "playbackQueue"
+      parameters:
+        - name: "count"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 20
+            maximum: 100
+        - name: "variant"
+          in: "query"
+          schema:
+            type: "string"
+            enum: ["best", "low", "original"]
+            default: "best"
+      responses:
+        "200":
+          description: "Random playback queue"
